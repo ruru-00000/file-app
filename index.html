@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webファイル自動整理アプリ</title>
+    <style>
+        body { font-family: 'Segoe UI', Meiryo, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; color: #2d3748; background-color: #f7fafc; }
+        h1 { color: #2b6cb0; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px; }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 20px; margin-top: 20px; }
+        button { flex: 1; padding: 12px; font-weight: bold; border: 1px solid #cbd5e0; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+        .btn-preview { background: #ebf8ff; color: #2b6cb0; }
+        .btn-execute { background: #e6fffa; color: #319795; }
+        .btn-undo { background: #edf2f7; color: #4a5568; }
+        button:hover { opacity: 0.8; transform: translateY(-1px); }
+        h3 { margin-top: 25px; color: #4a5568; }
+        pre { background: #1a202c; color: #edf2f7; padding: 15px; border-radius: 6px; font-family: Consolas, monospace; min-height: 150px; white-space: pre-wrap; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+    <h1>🚀 Webファイル自動整理アプリ</h1>
+    <p>「振り分け元」フォルダ内のファイルをキーワードに基づいて自動で仕分けます。</p>
+
+    <div class="btn-group">
+        <button class="btn-preview" onclick="sendAction('/preview')">① 割り当てをプレビュー</button>
+        <button class="btn-execute" onclick="sendAction('/execute')">② 一括移動を実行</button>
+        <button class="btn-undo" onclick="sendAction('/undo')">↩ 直前の処理を元に戻す</button>
+    </div>
+
+    <h3>【処理履歴・ステータス表示】</h3>
+    <pre id="history-box">アプリが起動しました。ボタンを押して処理を開始してください。</pre>
+
+    <script>
+        function sendAction(endpoint) {
+            const box = document.getElementById('history-box');
+            box.innerText = "処理中...";
+            
+            fetch(endpoint)
+                .then(response => response.json())
+                .then(data => {
+                    box.innerText = data.result;
+                    if (data.alert) {
+                        alert(data.alert);
+                    }
+                })
+                .catch(error => {
+                    box.innerText = "エラーが発生しました:\n" + error;
+                });
+        }
+    </script>
+</body>
+</html>
