@@ -2,6 +2,7 @@ import os
 import shutil
 import csv
 import json
+import re  # より確実な文字判定のために追加
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -9,7 +10,7 @@ class FileOrganizerLogic:
     def __init__(self):
         self.src_dir = "振り分け元"
         self.unclassified_dir = "未該当"
-        # ルールマップ（ここに含まれる文字がファイル名にあれば、そのフォルダへ）
+        # ルールマップ
         self.rule_map = {"実験": "実験", "数学": "数学", "英語": "英語"}
         self.log_path = "log.csv"
         self.last_moved_history = []
@@ -27,9 +28,9 @@ class FileOrganizerLogic:
             csv.writer(f).writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), filename, dest, status])
 
     def determine_destination(self, filename):
-        # ファイル名の中にキーワードが含まれているか「部分一致」でチェック
+        # より強力な正規表現を使って、ファイル名にキーワードが含まれるか判定
         for keyword, folder in self.rule_map.items():
-            if keyword in filename: 
+            if re.search(keyword, filename): 
                 return folder
         return self.unclassified_dir
 
@@ -69,7 +70,7 @@ class FileOrganizerLogic:
         success_count = 0
 
         for f in filenames:
-            # 1. どこにファイルがあるか探す（未該当から戻し忘れた場合も考慮して、未該当フォルダ内も探すようにしました！）
+            # どこにファイルがあるか探す（未該当フォルダ内も検索）
             if os.path.exists(os.path.join(self.src_dir, f)):
                 src = os.path.join(self.src_dir, f)
             elif os.path.exists(os.path.join(self.unclassified_dir, f)):
@@ -80,16 +81,13 @@ class FileOrganizerLogic:
                 lines.append(f"  [スキップ] {f} (ファイルが見つかりません)")
                 continue
 
-            # 2. 移動先を決定
             dest_dir = self.determine_destination(f)
             dest = os.path.join(dest_dir, f)
 
-            # 3. 同名ファイルがすでに移動先にあるかチェック
             if os.path.exists(dest):
                 lines.append(f"  [エラー] {f} はすでに移動先に存在するためスキップしました")
                 continue
 
-            # 4. 移動実行
             shutil.move(src, dest)
             self.last_moved_history.append((src, dest))
             self.write_log(f, dest_dir, "成功(ドロップ)")
