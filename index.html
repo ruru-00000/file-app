@@ -7,6 +7,28 @@
     <style>
         body { font-family: 'Segoe UI', Meiryo, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; color: #2d3748; background-color: #f7fafc; }
         h1 { color: #2b6cb0; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px; }
+        
+        /* ドロップゾーンのスタイル */
+        .drop-zone {
+            border: 3px dashed #cbd5e0;
+            padding: 30px;
+            border-radius: 8px;
+            background-color: #ffffff;
+            text-align: center;
+            color: #718096;
+            font-weight: bold;
+            font-size: 16px;
+            margin: 20px 0;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        .drop-zone.dragover {
+            background-color: #ebf8ff;
+            border-color: #4299e1;
+            color: #2b6cb0;
+            transform: scale(1.01);
+        }
+
         .btn-group { display: flex; gap: 10px; margin-bottom: 20px; margin-top: 20px; }
         button { flex: 1; padding: 12px; font-weight: bold; border: 1px solid #cbd5e0; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
         .btn-preview { background: #ebf8ff; color: #2b6cb0; }
@@ -20,34 +42,82 @@
 <body>
 
     <h1>🚀 Webファイル自動整理アプリ</h1>
-    <p>「振り分け元」フォルダ内のファイルをキーワードに基づいて自動で仕分けます。</p>
+    <p>「振り分け元」フォルダ内のファイルを仕分けます。画面へのドラッグ＆ドロップ操作にも対応しています。</p>
+
+    <div class="drop-zone" id="drop-zone">
+        📁 ここに仕分けたいファイルをドロップしてください
+    </div>
 
     <div class="btn-group">
         <button class="btn-preview" onclick="sendAction('/preview')">① 割り当てをプレビュー</button>
-        <button class="btn-execute" onclick="sendAction('/execute')">② 一括移動を実行</button>
+        <button class="btn-execute" onclick="sendAction('/execute')">② フォルダ内を一括移動</button>
         <button class="btn-undo" onclick="sendAction('/undo')">↩ 直前の処理を元に戻す</button>
     </div>
 
     <h3>【処理履歴・ステータス表示】</h3>
-    <pre id="history-box">アプリが起動しました。ボタンを押して処理を開始してください。</pre>
+    <pre id="history-box">アプリが起動しました。ファイルをドロップするか、ボタンを押して処理を開始してください。</pre>
 
     <script>
+        const box = document.getElementById('history-box');
+        const dropZone = document.getElementById('drop-zone');
+
+        // 標準のボタン操作用
         function sendAction(endpoint) {
-            const box = document.getElementById('history-box');
             box.innerText = "処理中...";
-            
             fetch(endpoint)
                 .then(response => response.json())
                 .then(data => {
                     box.innerText = data.result;
-                    if (data.alert) {
-                        alert(data.alert);
-                    }
+                    if (data.alert) alert(data.alert);
                 })
-                .catch(error => {
-                    box.innerText = "エラーが発生しました:\n" + error;
-                });
+                .catch(error => { box.innerText = "エラーが発生しました:\n" + error; });
         }
+
+        // --- ドラッグ＆ドロップの制御処理 ---
+        // ブラウザがファイルを開いてしまうのを防ぐ
+        window.addEventListener('dragover', (e) => e.preventDefault());
+        window.addEventListener('drop', (e) => e.preventDefault());
+
+        // ドロップエリアの上にファイルが来たとき
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        // ドロップエリアからファイルが離れたとき
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        // 実際にファイルがドロップされたとき
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+
+            const files = e.dataTransfer.files;
+            if (files.length === 0) return;
+
+            // ドロップされたファイルの名前リストを作成
+            const fileNames = [];
+            for (let i = 0; i < files.length; i++) {
+                fileNames.push(files[i].name);
+            }
+
+            box.innerText = "ドロップされたファイルを処理中...";
+
+            // Python側へファイル名の一覧を送信
+            fetch('/drop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filenames: fileNames })
+            })
+            .then(response => response.json())
+            .then(data => {
+                box.innerText = data.result;
+                if (data.alert) alert(data.alert);
+            })
+            .catch(error => { box.innerText = "ドロップ処理中にエラーが発生しました:\n" + error; });
+        });
     </script>
 </body>
 </html>
