@@ -10,13 +10,14 @@ class FileOrganizerLogic:
     def __init__(self):
         self.src_dir = "振り分け元"
         self.unclassified_dir = "未該当"
-        # --- ここを「実験」「数学」「英語」に変更しました ---
+        # キーワードと移動先フォルダの定義
         self.rule_map = {"実験": "実験", "数学": "数学", "英語": "英語"}
         self.log_path = "log.csv"
         self.last_moved_history = []
         self._ensure_directories()
 
     def _ensure_directories(self):
+        # 必要なフォルダがなければ作成する
         for folder in [self.src_dir, self.unclassified_dir] + list(self.rule_map.values()):
             if not os.path.exists(folder): os.makedirs(folder)
         if not os.path.exists(self.log_path):
@@ -45,7 +46,8 @@ class FileOrganizerLogic:
         if not files: return "処理対象のファイルがありません。", None
         
         for f in files:
-            if os.path.exists(os.path.join(self.determine_destination(f), f)):
+            dest_dir = self.determine_destination(f)
+            if os.path.exists(os.path.join(dest_dir, f)):
                 return f"エラー: 移動先に同名ファイルが既に存在します。\n対象: {f}", "重複エラーが発生しました"
 
         self.last_moved_history = []
@@ -62,11 +64,9 @@ class FileOrganizerLogic:
     def execute_drop(self, filenames):
         if not filenames: return "処理されたファイルがありません。", None
 
+        # 重複ガードチェックを修正
         for f in filenames:
             dest_dir = self.determine_destination(f)
-            src_path = os.path.join(self.src_dir, f) if os.path.exists(os.path.join(self.src_dir, f)) else f
-            if not os.path.exists(src_path):
-                continue
             if os.path.exists(os.path.join(dest_dir, f)):
                 return f"エラー: 移動先に同名ファイルが既に存在します。\n対象: {f}", "重複エラーが発生しました"
 
@@ -75,6 +75,7 @@ class FileOrganizerLogic:
         success_count = 0
 
         for f in filenames:
+            # 振り分け元フォルダ、または直下にあるファイルを探す
             src = os.path.join(self.src_dir, f) if os.path.exists(os.path.join(self.src_dir, f)) else f
             if not os.path.exists(src):
                 lines.append(f"  [スキップ] {f} (ファイルが指定フォルダに見つかりません)")
