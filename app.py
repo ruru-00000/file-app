@@ -10,7 +10,8 @@ class FileOrganizerLogic:
     def __init__(self):
         self.src_dir = "振り分け元"
         self.unclassified_dir = "未該当"
-        self.rule_map = {"請求書": "請求書", "マニュアル": "マニュアル", "報告書": "報告書"}
+        # --- ここを「実験」「数学」「英語」に変更しました ---
+        self.rule_map = {"実験": "実験", "数学": "数学", "英語": "英語"}
         self.log_path = "log.csv"
         self.last_moved_history = []
         self._ensure_directories()
@@ -58,14 +59,11 @@ class FileOrganizerLogic:
             lines.append(f"  [成功] {f} ➔ {dest_dir}")
         return "\n".join(lines) + f"\n\n合計 {len(files)} 件移動しました。", "ファイル自動仕分けが完了しました！"
 
-    # ドロップされたファイルだけをピンポイントで仕分ける新しい機能
     def execute_drop(self, filenames):
         if not filenames: return "処理されたファイルがありません。", None
 
-        # 重複ガードチェック
         for f in filenames:
             dest_dir = self.determine_destination(f)
-            # 振り分け元にあるか、またはカレントディレクトリにあるか確認
             src_path = os.path.join(self.src_dir, f) if os.path.exists(os.path.join(self.src_dir, f)) else f
             if not os.path.exists(src_path):
                 continue
@@ -77,7 +75,6 @@ class FileOrganizerLogic:
         success_count = 0
 
         for f in filenames:
-            # 振り分け元フォルダ、またはアプリと同じ階層にある対象ファイルを探す
             src = os.path.join(self.src_dir, f) if os.path.exists(os.path.join(self.src_dir, f)) else f
             if not os.path.exists(src):
                 lines.append(f"  [スキップ] {f} (ファイルが指定フォルダに見つかりません)")
@@ -109,7 +106,6 @@ class FileOrganizerLogic:
 
 logic = FileOrganizerLogic()
 
-# Webサーバーの挙動定義クラス
 class WebServerHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/':
@@ -157,9 +153,6 @@ if __name__ == '__main__':
         webbrowser.open("http://localhost:8080")
 
     server = HTTPServer(('localhost', 8080), WebServerHandler)
-    
-    # サーバー起動1秒後に自動でブラウザを開く
     threading.Timer(1.0, open_browser).start()
-    
     print("🚀 アプリ用サーバーが起動しました。")
     server.serve_forever()
