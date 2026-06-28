@@ -5,19 +5,17 @@ import json
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# ロジック・CSV管理クラス
 class FileOrganizerLogic:
     def __init__(self):
         self.src_dir = "振り分け元"
         self.unclassified_dir = "未該当"
-        # キーワードと移動先フォルダの定義
+        # ルールマップ（ここに含まれる文字がファイル名にあれば、そのフォルダへ）
         self.rule_map = {"実験": "実験", "数学": "数学", "英語": "英語"}
         self.log_path = "log.csv"
         self.last_moved_history = []
         self._ensure_directories()
 
     def _ensure_directories(self):
-        # 必要なフォルダがなければ作成する
         for folder in [self.src_dir, self.unclassified_dir] + list(self.rule_map.values()):
             if not os.path.exists(folder): os.makedirs(folder)
         if not os.path.exists(self.log_path):
@@ -29,8 +27,10 @@ class FileOrganizerLogic:
             csv.writer(f).writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), filename, dest, status])
 
     def determine_destination(self, filename):
+        # ファイル名の中にキーワードが含まれているか「部分一致」でチェック
         for keyword, folder in self.rule_map.items():
-            if keyword in filename: return folder
+            if keyword in filename: 
+                return folder
         return self.unclassified_dir
 
     def preview(self):
@@ -64,25 +64,32 @@ class FileOrganizerLogic:
     def execute_drop(self, filenames):
         if not filenames: return "処理されたファイルがありません。", None
 
-        # 重複ガードチェックを修正
-        for f in filenames:
-            dest_dir = self.determine_destination(f)
-            if os.path.exists(os.path.join(dest_dir, f)):
-                return f"エラー: 移動先に同名ファイルが既に存在します。\n対象: {f}", "重複エラーが発生しました"
-
         self.last_moved_history = []
         lines = ["【ドロップ仕分け 実行結果】"]
         success_count = 0
 
         for f in filenames:
-            # 振り分け元フォルダ、または直下にあるファイルを探す
-            src = os.path.join(self.src_dir, f) if os.path.exists(os.path.join(self.src_dir, f)) else f
-            if not os.path.exists(src):
-                lines.append(f"  [スキップ] {f} (ファイルが指定フォルダに見つかりません)")
+            # 1. どこにファイルがあるか探す（未該当から戻し忘れた場合も考慮して、未該当フォルダ内も探すようにしました！）
+            if os.path.exists(os.path.join(self.src_dir, f)):
+                src = os.path.join(self.src_dir, f)
+            elif os.path.exists(os.path.join(self.unclassified_dir, f)):
+                src = os.path.join(self.unclassified_dir, f)
+            elif os.path.exists(f):
+                src = f
+            else:
+                lines.append(f"  [スキップ] {f} (ファイルが見つかりません)")
                 continue
 
+            # 2. 移動先を決定
             dest_dir = self.determine_destination(f)
             dest = os.path.join(dest_dir, f)
+
+            # 3. 同名ファイルがすでに移動先にあるかチェック
+            if os.path.exists(dest):
+                lines.append(f"  [エラー] {f} はすでに移動先に存在するためスキップしました")
+                continue
+
+            # 4. 移動実行
             shutil.move(src, dest)
             self.last_moved_history.append((src, dest))
             self.write_log(f, dest_dir, "成功(ドロップ)")
