@@ -5,6 +5,7 @@ import json
 import re
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.parse import unquote  # 💡 日本語ファイル名の文字化けを直す標準パーツ
 
 # プログラムが置かれているフォルダの絶対パスを取得
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -79,22 +80,18 @@ class FileOrganizerLogic:
             lines.append(f"  [成功] {f} ➔ {os.path.basename(dest_dir)}")
         return "\n".join(lines) + f"\n\n合計 {len(files)} 件移動しました。", "一括仕分け完了！"
 
-    # 💡 修正：ドロップされた実際のファイルデータを受け取って処理する
     def process_uploaded_file(self, filename, file_content):
         self.last_moved_history = []
-        
-        # まずは「振り分け元」に一時保存する（または直接仕分ける）
         dest_dir = self.determine_destination(filename)
         dest_path = os.path.join(dest_dir, filename)
         
         if os.path.exists(dest_path):
             return f"  [エラー] {filename} はすでに移動先に存在するためスキップしました", False
 
-        # ファイルを書き出し
+        # ファイル書き出し
         with open(dest_path, "wb") as f:
             f.write(file_content)
             
-        # 履歴とログの記録（Undo用に元の場所はsrc_dirとして記録）
         pseudo_src = os.path.join(self.src_dir, filename)
         self.last_moved_history.append((pseudo_src, dest_path))
         self.write_log(filename, os.path.basename(dest_dir), "成功(ドロップ)")
@@ -140,11 +137,11 @@ class WebServerHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == '/drop':
-            # 💡 修正：バイナリデータ（ファイルそのもの）を直接受け取る
             content_length = int(self.headers['Content-Length'])
-            filename = self.headers.get('X-File-Name', 'unknown_file')
-            # 擬似的な日本語デコード対策
-            filename = requests_filename = filename.encode('latin1').decode('utf-8', errors='ignore') if filename else "unknown"
+            
+            # 💡 修正：安全にブラウザからのファイル名を取り出してデコードする
+            raw_filename = self.headers.get('X-File-Name', 'unknown_file')
+            filename = unquote(raw_filename)
             
             file_content = self.rfile.read(content_length)
 
@@ -155,7 +152,7 @@ class WebServerHandler(BaseHTTPRequestHandler):
             log_line, success = logic.process_uploaded_file(filename, file_content)
             
             res_text = "【ドロップ仕分け 実行結果】\n" + log_line
-            alert_msg = "ドロップ仕分けが完了しました！" if success else "エラーが発生しました"
+            alert_msg = "ドロップ仕分けが完了しました！" if success else "重複エラーまたはスキップされました"
             
             response = {
                 "result": f"--- 実行時刻: {datetime.now().strftime('%H:%M:%S')} ---\n" + res_text,
