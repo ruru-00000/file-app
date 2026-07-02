@@ -5,7 +5,6 @@ import json
 import re
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import unquote  # 💡 日本語ファイル名の文字化けを直す標準パーツ
 
 # プログラムが置かれているフォルダの絶対パスを取得
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -46,7 +45,7 @@ class FileOrganizerLogic:
         lines = [
             "【システム診断情報】",
             f"基準フォルダ: {BASE_DIR}",
-            f"現在のファイル数: {len(files)} 件",
+            f"振り分け元のファイル数: {len(files)} 件",
             "--------------------------------"
         ]
         if not files: 
@@ -80,22 +79,23 @@ class FileOrganizerLogic:
             lines.append(f"  [成功] {f} ➔ {os.path.basename(dest_dir)}")
         return "\n".join(lines) + f"\n\n合計 {len(files)} 件移動しました。", "一括仕分け完了！"
 
-    def process_uploaded_file(self, filename, file_content):
+    def execute_direct_move(self, filename):
+        # 💡 「振り分け元」フォルダにあるファイルを直接移動させる安全なロジック
         self.last_moved_history = []
-        dest_dir = self.determine_destination(filename)
-        dest_path = os.path.join(dest_dir, filename)
+        src = os.path.join(self.src_dir, filename)
         
-        if os.path.exists(dest_path):
+        if not os.path.exists(src):
+            return f"  [スキップ] {filename} (振り分け元フォルダにファイルが見つかりません。先にファイルをフォルダに入れてください)", False
+
+        dest_dir = self.determine_destination(filename)
+        dest = os.path.join(dest_dir, filename)
+
+        if os.path.exists(dest):
             return f"  [エラー] {filename} はすでに移動先に存在するためスキップしました", False
 
-        # ファイル書き出し
-        with open(dest_path, "wb") as f:
-            f.write(file_content)
-            
-        pseudo_src = os.path.join(self.src_dir, filename)
-        self.last_moved_history.append((pseudo_src, dest_path))
-        self.write_log(filename, os.path.basename(dest_dir), "成功(ドロップ)")
-        
+        shutil.move(src, dest)
+        self.last_moved_history.append((src, dest))
+        self.write_log(filename, os.path.basename(dest_dir), "成功(選択仕分け)")
         return f"  [成功] {filename} ➔ {os.path.basename(dest_dir)}", True
 
     def undo(self):
@@ -136,23 +136,19 @@ class WebServerHandler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
-        if self.path == '/drop':
+        if self.path == '/select-move':
             content_length = int(self.headers['Content-Length'])
-            
-            # 💡 修正：安全にブラウザからのファイル名を取り出してデコードする
-            raw_filename = self.headers.get('X-File-Name', 'unknown_file')
-            filename = unquote(raw_filename)
-            
-            file_content = self.rfile.read(content_length)
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            filename = data.get('filename', '')
 
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
 
-            log_line, success = logic.process_uploaded_file(filename, file_content)
-            
-            res_text = "【ドロップ仕分け 実行結果】\n" + log_line
-            alert_msg = "ドロップ仕分けが完了しました！" if success else "重複エラーまたはスキップされました"
+            log_line, success = logic.execute_direct_move(filename)
+            res_text = "【選択仕分け 実行結果】\n" + log_line
+            alert_msg = "仕分けが完了しました！" if success else "エラーが発生しました"
             
             response = {
                 "result": f"--- 実行時刻: {datetime.now().strftime('%H:%M:%S')} ---\n" + res_text,
