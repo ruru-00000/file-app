@@ -2,7 +2,7 @@ import os
 import shutil
 import csv
 import json
-import re  # より確実な文字判定のために追加
+import re
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -152,13 +152,7 @@ class WebServerHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(response, ensure_ascii=False).encode('utf-8'))
 
 if __name__ == '__main__':
-    import webbrowser
-    import threading
-
-    def open_browser():
-        webbrowser.open("http://localhost:8080")
-
+    # サーバーを起動して待機状態にする
     server = HTTPServer(('localhost', 8080), WebServerHandler)
-    threading.Timer(1.0, open_browser).start()
-    print("🚀 アプリ用サーバーが起動しました。")
+    print("🚀 アプリ用サーバーが待機中です。ブラウザからアクセスしてください。")
     server.serve_forever()
