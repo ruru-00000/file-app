@@ -10,10 +10,13 @@ class FileOrganizerLogic:
     def __init__(self):
         self.src_dir = "振り分け元"
         self.unclassified_dir = "未該当"
-        # ルールマップ
-        self.rule_map = {"実験": "実験", "数学": "数学", "英語": "英語"}
         self.log_path = "log.csv"
+        self.rules_path = "rules.json"
         self.last_moved_history = []
+        
+        # デフォルトルール
+        self.rule_map = {"実験": "実験", "数学": "数学", "英語": "英語"}
+        self._load_rules()
         self._ensure_directories()
 
     def _ensure_directories(self):
@@ -23,19 +26,56 @@ class FileOrganizerLogic:
             with open(self.log_path, mode='w', encoding='utf-8-sig', newline='') as f:
                 csv.writer(f).writerow(["日時", "ファイル名", "移動先フォルダ", "ステータス"])
 
+    def _load_rules(self):
+        if os.path.exists(self.rules_path):
+            try:
+                with open(self.rules_path, 'r', encoding='utf-8') as f:
+                    self.rule_map = json.load(f)
+            except:
+                pass
+
+    def _save_rules(self):
+        with open(self.rules_path, 'w', encoding='utf-8') as f:
+            json.dump(self.rule_map, f, ensure_ascii=False, indent=4)
+        self._ensure_directories()
+
+    def add_rule(self, keyword, folder):
+        if not keyword or not folder: return False, "キーワードとフォルダ名を入力してください。"
+        self.rule_map[keyword] = folder
+        self._save_rules()
+        return True, f"ルール「{keyword} ➔ {folder}」を追加しました。"
+
+    def delete_rule(self, keyword):
+        if keyword in self.rule_map:
+            del self.rule_map[keyword]
+            self._save_rules()
+            return True, f"キーワード「{keyword}」のルールを削除しました。"
+        return False, "ルールが見つかりません。"
+
+    def get_source_files(self):
+        if not os.path.exists(self.src_dir): return []
+        return [f for f in os.listdir(self.src_dir) if os.path.isfile(os.path.join(self.src_dir, f))]
+
+    def delete_source_file(self, filename):
+        path = os.path.join(self.src_dir, filename)
+        if os.path.exists(path):
+            os.remove(path)
+            self.write_log(filename, "ブラウザから削除", "削除")
+            return True, f"「{filename}」を削除しました。"
+        return False, "ファイルが見つかりません。"
+
     def write_log(self, filename, dest, status):
         with open(self.log_path, mode='a', encoding='utf-8-sig', newline='') as f:
             csv.writer(f).writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), filename, dest, status])
 
     def determine_destination(self, filename):
-        # より強力な正規表現を使って、ファイル名にキーワードが含まれるか判定
         for keyword, folder in self.rule_map.items():
             if re.search(keyword, filename): 
                 return folder
         return self.unclassified_dir
 
     def preview(self):
-        files = [f for f in os.listdir(self.src_dir) if os.path.isfile(os.path.join(self.src_dir, f))] if os.path.exists(self.src_dir) else []
+        files = self.get_source_files()
         if not files: return "振り分け元フォルダにファイルがありません。"
         lines = ["【割り当てプレビュー】"]
         for f in files:
@@ -43,7 +83,7 @@ class FileOrganizerLogic:
         return "\n".join(lines)
 
     def execute(self):
-        files = [f for f in os.listdir(self.src_dir) if os.path.isfile(os.path.join(self.src_dir, f))] if os.path.exists(self.src_dir) else []
+        files = self.get_source_files()
         if not files: return "処理対象のファイルがありません。", None
         
         for f in files:
@@ -61,40 +101,6 @@ class FileOrganizerLogic:
             self.write_log(f, dest_dir, "成功")
             lines.append(f"  [成功] {f} ➔ {dest_dir}")
         return "\n".join(lines) + f"\n\n合計 {len(files)} 件移動しました。", "ファイル自動仕分けが完了しました！"
-
-    def execute_drop(self, filenames):
-        if not filenames: return "処理されたファイルがありません。", None
-
-        self.last_moved_history = []
-        lines = ["【ドロップ仕分け 実行結果】"]
-        success_count = 0
-
-        for f in filenames:
-            # どこにファイルがあるか探す（未該当フォルダ内も検索）
-            if os.path.exists(os.path.join(self.src_dir, f)):
-                src = os.path.join(self.src_dir, f)
-            elif os.path.exists(os.path.join(self.unclassified_dir, f)):
-                src = os.path.join(self.unclassified_dir, f)
-            elif os.path.exists(f):
-                src = f
-            else:
-                lines.append(f"  [スキップ] {f} (ファイルが見つかりません)")
-                continue
-
-            dest_dir = self.determine_destination(f)
-            dest = os.path.join(dest_dir, f)
-
-            if os.path.exists(dest):
-                lines.append(f"  [エラー] {f} はすでに移動先に存在するためスキップしました")
-                continue
-
-            shutil.move(src, dest)
-            self.last_moved_history.append((src, dest))
-            self.write_log(f, dest_dir, "成功(ドロップ)")
-            lines.append(f"  [成功] {f} ➔ {dest_dir}")
-            success_count += 1
-
-        return "\n".join(lines) + f"\n\n合計 {success_count} 件のドロップファイルを移動しました。", "ドロップ仕分けが完了しました！"
 
     def undo(self):
         if not self.last_moved_history: return "元に戻す直前の移動履歴がありません。", "Undo失敗"
@@ -119,6 +125,15 @@ class WebServerHandler(BaseHTTPRequestHandler):
             self.send_header('Content-type', 'text/html; charset=utf-8')
             self.end_headers()
             with open('index.html', 'rb') as f: self.wfile.write(f.read())
+        elif self.path == '/api/data':
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            data = {
+                "files": logic.get_source_files(),
+                "rules": logic.rule_map
+            }
+            self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
         elif self.path in ['/preview', '/execute', '/undo']:
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -136,23 +151,31 @@ class WebServerHandler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
-        if self.path == '/drop':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data.decode('utf-8'))
-            filenames = data.get('filenames', [])
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+        data = json.loads(post_data.decode('utf-8'))
 
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
+        self.send_response(200)
+        self.send_header('Content-type', 'application/json')
+        self.end_headers()
+        
+        res_text, alert_msg = "", None
 
-            res_text, alert_msg = logic.execute_drop(filenames)
-            response = {"result": f"--- 実行時刻: {datetime.now().strftime('%H:%M:%S')} ---\n" + res_text}
-            if alert_msg: response["alert"] = alert_msg
-            self.wfile.write(json.dumps(response, ensure_ascii=False).encode('utf-8'))
+        if self.path == '/api/rule/add':
+            success, alert_msg = logic.add_rule(data.get('keyword'), data.get('folder'))
+            res_text = alert_msg
+        elif self.path == '/api/rule/delete':
+            success, alert_msg = logic.delete_rule(data.get('keyword'))
+            res_text = alert_msg
+        elif self.path == '/api/file/delete':
+            success, alert_msg = logic.delete_source_file(data.get('filename'))
+            res_text = alert_msg
+
+        response = {"result": f"--- 更新時刻: {datetime.now().strftime('%H:%M:%S')} ---\n" + res_text}
+        if alert_msg: response["alert"] = alert_msg
+        self.wfile.write(json.dumps(response, ensure_ascii=False).encode('utf-8'))
 
 if __name__ == '__main__':
-    # サーバーを起動して待機状態にする
     server = HTTPServer(('localhost', 8080), WebServerHandler)
     print("🚀 アプリ用サーバーが待機中です。ブラウザからアクセスしてください。")
     server.serve_forever()
