@@ -199,6 +199,15 @@
         .file-table tr:last-child td { border-bottom: none; }
         .empty-message { color: var(--text-sub); font-style: italic; text-align: center; padding: 20px !important; }
 
+        /* ファイル行（右クリック対象）のスタイル */
+        .file-row {
+            cursor: context-menu;
+            transition: background 0.1s;
+        }
+        .file-row:hover {
+            background: #F9FAFB;
+        }
+
         /* ファイル名リンクのスタイル */
         .file-link {
             color: #2563EB;
@@ -225,6 +234,38 @@
             overflow-y: auto;
             font-size: 12px;
             line-height: 1.6;
+        }
+
+        /* ーーー カスタム右クリックメニューのスタイル ーーー */
+        .context-menu {
+            display: none;
+            position: absolute;
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border-radius: 8px;
+            padding: 6px 0;
+            min-width: 220px;
+            z-index: 9999;
+        }
+        .context-menu-item {
+            padding: 10px 16px;
+            font-size: 14px;
+            color: var(--text-main);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: background 0.1s;
+        }
+        .context-menu-item:hover {
+            background: #F3F4F6;
+        }
+        .context-menu-item.delete {
+            color: #DC2626; /* 削除ボタンは赤色にして目立たせる */
+        }
+        .context-menu-item.delete:hover {
+            background: #FEE2E2;
         }
     </style>
 </head>
@@ -281,7 +322,7 @@
             <table class="file-table">
                 <thead>
                     <tr>
-                        <th width="70%">ファイル名 (クリックで開く)</th>
+                        <th width="70%">ファイル名 (クリック or 右クリック)</th>
                         <th width="30%">ファイル形式</th>
                     </tr>
                 </thead>
@@ -299,9 +340,18 @@
     </div>
 </div>
 
+<!-- カスタム右クリックメニューのHTML -->
+<div id="custom-context-menu" class="context-menu">
+    <div class="context-menu-item" onclick="handleMenuOpen()">👁️ このファイルを開く</div>
+    <div class="context-menu-item delete" onclick="handleMenuDelete()">🗑️ このファイルをフォルダから削除する</div>
+</div>
+
 <script>
     // 選択された本物のファイルオブジェクトを一時的にメモリ保持するマップ（リロードでクリアされる）
     let liveFileObjects = {};
+
+    // 現在右クリック操作を行っている対象のファイル名を保持
+    let selectedFilenameContext = null;
 
     // --- 状態の初期化（ローカルストレージのチェック） ---
     let storage, customFolders, ruleMap;
@@ -346,6 +396,11 @@
     }
     renderSidebar();
     switchFolder(currentFolder);
+
+    // どこかをクリックしたらカスタムメニューを閉じるイベント
+    document.addEventListener('click', function() {
+        hideContextMenu();
+    });
 
     // サイドバーを動的に描画する関数
     function renderSidebar() {
@@ -430,12 +485,65 @@
 
         files.forEach(filename => {
             const ext = filename.split('.').pop().toUpperCase() + " ファイル";
-            const row = `<tr>
+            
+            // 行(tr)自体に右クリックイベント「oncontextmenu」を仕込む
+            const row = `<tr class="file-row" oncontextmenu="showContextMenu(event, '${filename}')">
                 <td>📄 <span class="file-link" onclick="openFile('${filename}')">${filename}</span></td>
                 <td>${ext}</td>
             </tr>`;
             tbody.innerHTML += row;
         });
+    }
+
+    // 右クリックメニューを表示する関数
+    function showContextMenu(e, filename) {
+        e.preventDefault(); // ブラウザ標準のメニューを抑止
+        selectedFilenameContext = filename; // 操作対象をキープ
+
+        const menu = document.getElementById('custom-context-menu');
+        menu.style.display = 'block';
+        menu.style.left = e.pageX + 'px';
+        menu.style.top = e.pageY + 'px';
+    }
+
+    // 右クリックメニューを隠す関数
+    function hideContextMenu() {
+        const menu = document.getElementById('custom-context-menu');
+        menu.style.display = 'none';
+    }
+
+    // 右クリックメニュー内の「開く」が押されたとき
+    function handleMenuOpen() {
+        if (selectedFilenameContext) {
+            openFile(selectedFilenameContext);
+        }
+    }
+
+    // 右クリックメニュー内の「削除」が押されたとき
+    function handleMenuDelete() {
+        if (!selectedFilenameContext) return;
+        
+        const filename = selectedFilenameContext;
+        const fileIndex = storage[currentFolder].indexOf(filename);
+        
+        if (fileIndex > -1) {
+            // 配列から該当ファイルを削除
+            storage[currentFolder].splice(fileIndex, 1);
+            
+            // 本物のファイルオブジェクトキャッシュからも除去
+            if (liveFileObjects[filename]) {
+                delete liveFileObjects[filename];
+            }
+
+            // ローカルストレージの状態を保存
+            saveState();
+            
+            // ビューの更新
+            updateView();
+            
+            printLog(`「${filename}」を [${currentFolder}] フォルダから完全に削除しました。`, "ファイルの削除");
+            alert("ファイルの削除が完了しました！");
+        }
     }
 
     // ログエリア出力ヘルパー
@@ -454,7 +562,7 @@
 
     // --- 各種アクション ---
 
-    // 1. ファイルを開く機能 (文字化け対策版)
+    // 1. ファイルを開く機能
     function openFile(filename) {
         if (liveFileObjects[filename]) {
             const file = liveFileObjects[filename];
@@ -472,7 +580,6 @@
         dummyContent += `実際のアプリでは、PC内のローカルファイルを直接起動、または対応するアプリケーション（Word、Excel等）に受け渡して展開します。\n`;
         dummyContent += `第三者が評価・確認を行う際、PC側に本物のファイルを準備する手間を省くための親切設計シミュレーション機能です。`;
 
-        // ★ 文字化け防止対策: typeに「charset=utf-8」を明示してBlobを生成
         const blob = new Blob([dummyContent], { type: 'text/plain;charset=utf-8' });
         const dummyURL = URL.createObjectURL(blob);
         window.open(dummyURL, '_blank');
@@ -493,7 +600,7 @@
         saveState();
         
         switchFolder(currentFolder);
-        printLog("他者評価・デモ用に、各フォルダに合計7つの模擬ファイルを自動生成・配分しました。\nファイル名をクリックすると、中身の確認（デモ閲覧）が可能です！", "サンプル自動生成");
+        printLog("他者評価・デモ用に、各フォルダに合計7つの模擬ファイルを自動生成・配分しました。\nファイル名（または右クリックメニュー）から、様々なアクションをテスト可能です！", "サンプル自動生成");
         alert("デモ用ファイルを各フォルダに自動配置しました！ファイル名をクリックして中身を確認してみてください。");
     }
 
