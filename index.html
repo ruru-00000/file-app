@@ -354,12 +354,13 @@
     let selectedFilenameContext = null;
 
     // --- 状態の初期化（ローカルストレージのチェック） ---
-    let storage, customFolders, ruleMap;
+    let storage, customFolders, ruleMap, currentFolder;
 
     function loadState() {
         const savedStorage = localStorage.getItem('file_organizer_storage');
         const savedFolders = localStorage.getItem('file_organizer_customFolders');
         const savedRules = localStorage.getItem('file_organizer_ruleMap');
+        const savedCurrentFolder = localStorage.getItem('file_organizer_currentFolder');
 
         if (savedStorage && savedFolders && savedRules) {
             storage = JSON.parse(savedStorage);
@@ -376,6 +377,13 @@
             customFolders = ["実験", "数学", "英語"];
             ruleMap = {"実験": "実験", "数学": "数学", "英語": "英語"};
         }
+
+        // 開いていたフォルダの状態を復帰（なければデフォルトの"実験"）
+        if (savedCurrentFolder && storage[savedCurrentFolder]) {
+            currentFolder = savedCurrentFolder;
+        } else {
+            currentFolder = Object.keys(storage)[0] || "未該当";
+        }
     }
 
     // 現在の状態をローカルストレージに保存する関数
@@ -383,17 +391,13 @@
         localStorage.setItem('file_organizer_storage', JSON.stringify(storage));
         localStorage.setItem('file_organizer_customFolders', JSON.stringify(customFolders));
         localStorage.setItem('file_organizer_ruleMap', JSON.stringify(ruleMap));
+        localStorage.setItem('file_organizer_currentFolder', currentFolder); // 現在選択中のフォルダも同期保存
     }
 
-    // 初期起動時の選択フォルダを最初のカスタムフォルダにする
-    let currentFolder = "実験";
     let lastMovedHistory = []; // Undo用
 
     // 起動時の初期化処理
     loadState();
-    if (!storage[currentFolder]) {
-        currentFolder = Object.keys(storage)[0] || "未該当";
-    }
     renderSidebar();
     switchFolder(currentFolder);
 
@@ -460,10 +464,12 @@
     // フォルダ切り替え機能
     function switchFolder(folderKey) {
         currentFolder = folderKey;
+        
+        // 選択フォルダが切り替わったタイミングでも状態を確実に保存
+        saveState();
+        
         renderSidebar(); // 見た目更新
-        
         document.getElementById('current-folder-title').textContent = `📄 現在のフォルダ: ${folderKey}`;
-        
         updateView();
     }
 
