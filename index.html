@@ -2,11 +2,10 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>ファイル自動仕分けアプリ</title>
+    <title>ファイル自動仕分けアプリ (シミュレーター版)</title>
     <style>
-        /* モダンなBoxアプリ風のデザイン設定 */
         :root {
-            --primary-color: #0061D5; 
+            --primary-color: #0061D5; /* Boxブルー */
             --bg-color: #FFFFFF;
             --sidebar-bg: #F9FAFB;
             --border-color: #E5E7EB;
@@ -21,9 +20,10 @@
             height: 100vh;
             background: var(--bg-color);
             color: var(--text-main);
+            user-select: none;
         }
 
-        /* 左側：サイドバー（フォルダツリー風） */
+        /* 左側：サイドバー */
         .sidebar {
             width: 260px;
             background: var(--sidebar-bg);
@@ -47,10 +47,10 @@
             color: var(--text-main);
             font-size: 15px;
             border-left: 3px solid transparent;
+            cursor: pointer;
         }
         .folder-item:hover {
             background: #F3F4F6;
-            cursor: default;
         }
         .folder-item.active {
             background: #EFF6FF;
@@ -59,6 +59,8 @@
             font-weight: bold;
         }
         .folder-icon { margin-right: 12px; font-size: 1.2em; }
+        .file-count { margin-left: auto; background: #E5E7EB; color: #4B5563; font-size: 11px; padding: 2px 6px; border-radius: 10px; }
+        .folder-item.active .file-count { background: #BFDBFE; color: #1E40AF; }
 
         /* 右側：メインコンテンツ */
         .main-content {
@@ -73,12 +75,14 @@
             display: flex;
             align-items: center;
             padding: 0 30px;
+            justify-content: space-between;
         }
         .header h2 { margin: 0; font-size: 1.2em; font-weight: 600; }
+        .env-badge { background: #DEF7EC; color: #03543F; font-size: 12px; font-weight: 500; padding: 4px 8px; border-radius: 4px; }
         
         .content-body { padding: 30px; max-width: 900px; }
 
-        /* ツールバー（ボタン群） */
+        /* ツールバー */
         .toolbar {
             display: flex;
             gap: 12px;
@@ -105,131 +109,340 @@
         }
         button.primary:hover { background: #0050B3; }
 
-        /* 個別ファイルアップロードゾーン */
+        /* 仕分け・ダミー生成ゾーン */
+        .zones-container {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 25px;
+        }
         .action-zone { 
+            flex: 1;
             border: 2px dashed var(--border-color); 
-            padding: 40px 20px; 
+            padding: 25px 20px; 
             background: #FAFBFC; 
             border-radius: 8px; 
             text-align: center;
-            margin-bottom: 25px;
             transition: border-color 0.2s;
         }
         .action-zone:hover { border-color: var(--primary-color); }
-        .action-zone h3 { margin: 0 0 10px 0; font-size: 1.1em; }
-        .action-zone p { color: var(--text-sub); font-size: 0.9em; margin-bottom: 20px; }
+        .action-zone h3 { margin: 0 0 5px 0; font-size: 1em; }
+        .action-zone p { color: var(--text-sub); font-size: 0.85em; margin-bottom: 15px; }
         
-        /* カスタムファイル選択ボタン */
         .file-upload-btn {
             display: inline-block;
-            padding: 10px 24px;
+            padding: 8px 18px;
             background: #fff;
             border: 1px solid var(--border-color);
             border-radius: 6px;
             cursor: pointer;
+            font-size: 13px;
             font-weight: 500;
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
         .file-upload-btn:hover { background: #F9FAFB; }
         input[type="file"] { display: none; }
 
+        /* 現在のフォルダ内ファイル一覧テーブル */
+        .file-list-section { margin-bottom: 25px; }
+        .file-list-section h3 { font-size: 1em; color: var(--text-main); margin-bottom: 10px; }
+        .file-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .file-table th, .file-table td {
+            text-align: left;
+            padding: 10px 15px;
+            font-size: 14px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .file-table th { background: #F9FAFB; color: var(--text-sub); font-weight: 600; }
+        .file-table tr:last-child td { border-bottom: none; }
+        .empty-message { color: var(--text-sub); font-style: italic; text-align: center; padding: 20px !important; }
+
         /* ログ出力エリア */
-        .log-section h3 { font-size: 1em; color: var(--text-main); margin-bottom: 12px; }
+        .log-section h3 { font-size: 1em; color: var(--text-main); margin-bottom: 10px; }
         #result { 
-            padding: 20px; 
+            padding: 15px; 
             background: #1E1E1E; 
             color: #D4D4D4; 
             border-radius: 8px; 
             white-space: pre-wrap; 
             font-family: 'Consolas', 'Courier New', monospace; 
-            min-height: 150px; 
-            font-size: 13px;
+            min-height: 100px; 
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 12px;
             line-height: 1.6;
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
         }
     </style>
 </head>
 <body>
 
-<!-- 左側のサイドバー（フォルダツリー風） -->
+<!-- 左側：サイドバー（フォルダツリー） -->
 <div class="sidebar">
     <div class="sidebar-header">マイフォルダ</div>
-    <div class="folder-item active"><span class="folder-icon">📂</span> 振り分け元 (作業用)</div>
-    <div class="folder-item"><span class="folder-icon">📁</span> 実験</div>
-    <div class="folder-item"><span class="folder-icon">📁</span> 数学</div>
-    <div class="folder-item"><span class="folder-icon">📁</span> 英語</div>
-    <div class="folder-item"><span class="folder-icon">📁</span> 未該当</div>
+    <div class="folder-item active" onclick="switchFolder('src_dir')">
+        <span class="folder-icon">📂</span> 振り分け元 <span class="file-count" id="count-src_dir">0</span>
+    </div>
+    <div class="folder-item" onclick="switchFolder('実験')">
+        <span class="folder-icon">📁</span> 実験 <span class="file-count" id="count-実験">0</span>
+    </div>
+    <div class="folder-item" onclick="switchFolder('数学')">
+        <span class="folder-icon">📁</span> 数学 <span class="file-count" id="count-数学">0</span>
+    </div>
+    <div class="folder-item" onclick="switchFolder('英語')">
+        <span class="folder-icon">📁</span> 英語 <span class="file-count" id="count-英語">0</span>
+    </div>
+    <div class="folder-item" onclick="switchFolder('未該当')">
+        <span class="folder-icon">📁</span> 未該当 <span class="file-count" id="count-未該当">0</span>
+    </div>
 </div>
 
-<!-- 右側のメイン画面 -->
+<!-- 右側：メイン画面 -->
 <div class="main-content">
     <div class="header">
         <h2>📁 ファイル自動仕分けシステム</h2>
+        <span class="env-badge">画面完結デモモード</span>
     </div>
     
     <div class="content-body">
         <!-- 操作ボタン群 -->
         <div class="toolbar">
-            <button onclick="sendRequest('/preview')">👀 プレビュー</button>
-            <button class="primary" onclick="sendRequest('/execute')">✨ 一括移動を実行</button>
-            <button onclick="sendRequest('/undo')">↩️ 元に戻す (Undo)</button>
+            <button onclick="triggerPreview()">👀 振り分け元をプレビュー</button>
+            <button class="primary" onclick="triggerExecute()">✨ 一括移動を実行</button>
+            <button onclick="triggerUndo()">↩️ 元に戻す (Undo)</button>
         </div>
 
-        <!-- 個別仕分けゾーン -->
-        <div class="action-zone">
-            <h3>個別ファイル仕分け</h3>
-            <p>※あらかじめ「振り分け元」フォルダに置いてあるファイルを選択してください。</p>
-            
-            <label class="file-upload-btn">
-                📄 ファイルを選択して仕分け
-                <input type="file" id="file-selector" onchange="handleFileSelect(this)">
-            </label>
+        <div class="zones-container">
+            <!-- テストファイル生成ゾーン -->
+            <div class="action-zone" style="border-style: solid; background: #f0f7ff;">
+                <h3>1. テストファイルの用意</h3>
+                <p>ボタンを押して、振り分け元にサンプルを生成します。</p>
+                <button onclick="generateSampleFiles()" style="margin: 0 auto; background: #e1effe; color: #1e429f; border-color: #a4cafe;">📄 サンプルファイルを生成</button>
+            </div>
+
+            <!-- 個別仕分けゾーン -->
+            <div class="action-zone">
+                <h3>2. 個別ファイル仕分け</h3>
+                <p>PC内の模擬ファイルを選択してその場で仕分けます。</p>
+                <label class="file-upload-btn">
+                    🔍 ファイルを選択して仕分け
+                    <input type="file" id="file-selector" onchange="handleFileSelect(this)">
+                </label>
+            </div>
+        </div>
+
+        <!-- リアルタイムファイル一覧（Box風） -->
+        <div class="file-list-section">
+            <h3 id="current-folder-title">📄 現在のフォルダ: 振り分け元</h3>
+            <table class="file-table">
+                <thead>
+                    <tr>
+                        <th width="70%">ファイル名</th>
+                        <th width="30%">ファイル形式</th>
+                    </tr>
+                </thead>
+                <tbody id="file-list-tbody">
+                    <!-- JavaScriptで動的に挿入されます -->
+                </tbody>
+            </table>
         </div>
         
         <!-- ログ表示エリア -->
         <div class="log-section">
             <h3>📋 実行結果・診断ログ</h3>
-            <div id="result">ボタンを押すか、ファイルを選択してください。</div>
+            <div id="result">「サンプルファイルを生成」ボタンを押して、シミュレーションを開始してください。</div>
         </div>
     </div>
 </div>
 
 <script>
-    async function sendRequest(path) {
-        const resultDiv = document.getElementById('result');
-        resultDiv.textContent = "処理中...";
-        try {
-            const response = await fetch(path);
-            const data = await response.json();
-            resultDiv.textContent = data.result;
-            if (data.alert) alert(data.alert);
-        } catch (error) {
-            resultDiv.textContent = `エラーが発生しました:\n${error.message}`;
-        }
+    // --- 状態管理（仮想フォルダストレージ） ---
+    let storage = {
+        src_dir: [],
+        "実験": [],
+        "数学": [],
+        "英語": [],
+        "未該当": []
+    };
+    
+    let currentFolder = "src_dir";
+    let lastMovedHistory = []; // Undo用
+    const ruleMap = {"実験": "実験", "数学": "数学", "英語": "英語"};
+
+    // 起動時の初期化
+    updateView();
+
+    // フォルダ切り替え機能
+    function switchFolder(folderKey) {
+        currentFolder = folderKey;
+        
+        // サイドバーの見た目更新
+        document.querySelectorAll('.folder-item').forEach(item => item.classList.remove('active'));
+        const index = ["src_dir", "実験", "数学", "英語", "未該当"].indexOf(folderKey);
+        document.querySelectorAll('.folder-item')[index].classList.add('active');
+        
+        // タイトル更新
+        const folderName = folderKey === "src_dir" ? "振り分け元" : folderKey;
+        document.getElementById('current-folder-title').textContent = `📄 現在のフォルダ: ${folderName}`;
+        
+        updateView();
     }
 
-    async function handleFileSelect(input) {
+    // 画面とバッジ数のリアルタイム更新
+    function updateView() {
+        // 各フォルダのファイル数を更新
+        for (let key in storage) {
+            document.getElementById(`count-${key}`).textContent = storage[key].length;
+        }
+
+        // ファイルテーブルの更新
+        const tbody = document.getElementById('file-list-tbody');
+        tbody.innerHTML = "";
+
+        const files = storage[currentFolder];
+        if (files.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="2" class="empty-message">このフォルダは空です</td></tr>`;
+            return;
+        }
+
+        files.forEach(filename => {
+            const ext = filename.split('.').pop().toUpperCase() + " ファイル";
+            const row = `<tr><td>📄 ${filename}</td><td>${ext}</td></tr>`;
+            tbody.innerHTML += row;
+        });
+    }
+
+    // ログエリア出力ヘルパー
+    function printLog(msg, title = "実行結果") {
+        const now = new Date().toLocaleTimeString();
+        document.getElementById('result').textContent = `--- 実行時刻: ${now} [${title}] ---\n${msg}`;
+    }
+
+    // 振分先の判定ロジック
+    function determineDestination(filename) {
+        for (let keyword in ruleMap) {
+            if (filename.includes(keyword)) return ruleMap[keyword];
+        }
+        return "未該当";
+    }
+
+    // --- 各種アクション ---
+
+    // 1. サンプルファイル生成
+    function generateSampleFiles() {
+        storage.src_dir = [
+            "第1回_物理実験データ.xlsx",
+            "数学基礎_課題回答.docx",
+            "英語リスニング演習.mp3",
+            "提出スケジュール一覧.txt"
+        ];
+        // 他のフォルダはリセット
+        storage["実験"] = []; storage["数学"] = []; storage["英語"] = []; storage["未該当"] = [];
+        lastMovedHistory = [];
+        
+        switchFolder("src_dir");
+        printLog("振り分け元フォルダに4つのサンプルファイルを生成しました。\n「プレビュー」または「一括移動を実行」を押してみてください。", "システム初期化");
+    }
+
+    // 2. プレビュー
+    function triggerPreview() {
+        const files = storage.src_dir;
+        let lines = [
+            "【システム診断情報】",
+            `振り分け元のファイル数: ${files.length} 件`,
+            "--------------------------------"
+        ];
+        
+        if (files.length === 0) {
+            lines.push("➔ 振り分け元フォルダにファイルがありません。先にサンプルを生成してください。");
+            printLog(lines.join("\n"), "プレビュー");
+            return;
+        }
+
+        lines.push("【割り当てプレビュー】");
+        files.forEach(f => {
+            const dest = determineDestination(f);
+            lines.push(`  ${f}  ➔  [${dest}] へ移動予定`);
+        });
+        
+        printLog(lines.join("\n"), "プレビュー");
+    }
+
+    // 3. 一括移動を実行
+    function triggerExecute() {
+        const files = [...storage.src_dir]; // コピー
+        if (files.length === 0) {
+            printLog("処理対象のファイルがありません。先にサンプルを生成してください。", "お知らせ");
+            alert("振り分け元フォルダにファイルがありません。");
+            return;
+        }
+
+        lastMovedHistory = [];
+        let lines = ["【一括移動 実行結果】"];
+
+        files.forEach(f => {
+            const dest = determineDestination(f);
+            storage[dest].push(f);
+            lastMovedHistory.push({ file: f, from: "src_dir", to: dest });
+            lines.push(`  [成功] ${f} ➔ ${dest}`);
+        });
+
+        storage.src_dir = []; // 振り分け元を空に
+        updateView();
+        printLog(lines.join("\n") + `\n\n合計 ${files.length} 件移動しました。`, "一括仕分け完了");
+        alert("一括仕分けが完了しました！");
+    }
+
+    // 4. 元に戻す (Undo)
+    function triggerUndo() {
+        if (lastMovedHistory.length === 0) {
+            printLog("元に戻す直前の移動履歴がありません。", "Undo失敗");
+            alert("Undo対象の履歴がありません。");
+            return;
+        }
+
+        let count = 0;
+        lastMovedHistory.forEach(history => {
+            // 移動先から削除
+            const idx = storage[history.to].indexOf(history.file);
+            if (idx > -1) {
+                storage[history.to].splice(idx, 1);
+                // 元のフォルダ（個別仕分けの場合はsrc_dir以外もあり得るが原則src_dir）に戻す
+                storage[history.from].push(history.file);
+                count++;
+            }
+        });
+
+        lastMovedHistory = [];
+        updateView();
+        printLog(`[Undo成功] ${count} 件のファイルを移動前の状態に戻しました。`, "元に戻しました");
+        alert("元の状態に戻しました！");
+    }
+
+    // 5. 個別ファイル仕分け
+    function handleFileSelect(input) {
         if (input.files.length === 0) return;
         const filename = input.files[0].name;
 
-        const resultDiv = document.getElementById('result');
-        resultDiv.textContent = "仕分け処理中...";
-
-        try {
-            const response = await fetch('/select-move', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filename: filename })
-            });
-            const data = await response.json();
-            resultDiv.textContent = data.result;
-            if (data.alert) alert(data.alert);
-        } catch (error) {
-            resultDiv.textContent = `処理エラー:\n${error.message}`;
-        }
+        // 個別仕分けの模擬処理（どこからでも、判定して直接該当フォルダへ飛ばす）
+        const dest = determineDestination(filename);
+        storage[dest].push(filename);
         
-        // 選択をリセット
-        input.value = '';
+        // 1件だけの履歴として保存
+        lastMovedHistory = [{ file: filename, from: "src_dir", to: dest }];
+        
+        // ユーザーがすぐ確認できるように移動先のフォルダに自動切り替え
+        switchFolder(dest);
+        
+        printLog(`【選択仕分け 実行結果】\n  [成功] ${filename} ➔ ${dest}\n\n※選択したファイルが対象フォルダへ直接追加されました。`, "個別仕分け完了");
+        alert(`「${filename}」の仕分けが完了しました！\n自動的に移動先の[${dest}]フォルダを表示します。`);
+        
+        input.value = ''; // リセット
     }
 </script>
 
