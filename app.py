@@ -1,10 +1,10 @@
 import os
 import shutil
 import csv
-import json
 import re
 from datetime import datetime
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import tkinter as tk
+from tkinter import ttk, messagebox
 
 # プログラムが置かれているフォルダの絶対パスを取得
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -19,6 +19,7 @@ class FileOrganizerLogic:
         self._ensure_directories()
 
     def _ensure_directories(self):
+        # 必要なフォルダを作成
         for keyword, folder in self.rule_map.items():
             full_path = os.path.join(BASE_DIR, folder)
             if not os.path.exists(full_path): os.makedirs(full_path)
@@ -40,35 +41,22 @@ class FileOrganizerLogic:
                 return os.path.join(BASE_DIR, folder)
         return self.unclassified_dir
 
-    def preview(self):
-        files = [f for f in os.listdir(self.src_dir) if os.path.isfile(os.path.join(self.src_dir, f))] if os.path.exists(self.src_dir) else []
-        lines = [
-            "【システム診断情報】",
-            f"基準フォルダ: {BASE_DIR}",
-            f"振り分け元のファイル数: {len(files)} 件",
-            "--------------------------------"
-        ]
-        if not files: 
-            lines.append("➔ 振り分け元フォルダにファイルがありません。")
-            return "\n".join(lines)
-            
-        lines.append("【割り当てプレビュー】")
-        for f in files:
-            dest_path = self.determine_destination(f)
-            lines.append(f"  {f}  ➔  [{os.path.basename(dest_path)}] へ移動予定")
-        return "\n".join(lines)
-
     def execute(self):
-        files = [f for f in os.listdir(self.src_dir) if os.path.isfile(os.path.join(self.src_dir, f))] if os.path.exists(self.src_dir) else []
-        if not files: return "処理対象のファイルがありません。", None
+        if not os.path.exists(self.src_dir):
+            return False, "振り分け元フォルダが存在しません。"
+            
+        files = [f for f in os.listdir(self.src_dir) if os.path.isfile(os.path.join(self.src_dir, f))]
+        if not files: 
+            return False, "振り分け元フォルダにファイルがありません。"
         
+        # 重複チェック
         for f in files:
             dest_dir = self.determine_destination(f)
             if os.path.exists(os.path.join(dest_dir, f)):
-                return f"エラー: 移動先に同名ファイルが既に存在します。\n対象: {f}", "重複エラー"
+                return False, f"エラー: 移動先に同名ファイルが既に存在します。\n対象: {f}"
 
         self.last_moved_history = []
-        lines = ["【一括移動 実行結果】"]
+        count = 0
         for f in files:
             src = os.path.join(self.src_dir, f)
             dest_dir = self.determine_destination(f)
@@ -76,30 +64,14 @@ class FileOrganizerLogic:
             shutil.move(src, dest)
             self.last_moved_history.append((src, dest))
             self.write_log(f, os.path.basename(dest_dir), "成功")
-            lines.append(f"  [成功] {f} ➔ {os.path.basename(dest_dir)}")
-        return "\n".join(lines) + f"\n\n合計 {len(files)} 件移動しました。", "一括仕分け完了！"
-
-    def execute_direct_move(self, filename):
-        # 💡 「振り分け元」フォルダにあるファイルを直接移動させる安全なロジック
-        self.last_moved_history = []
-        src = os.path.join(self.src_dir, filename)
-        
-        if not os.path.exists(src):
-            return f"  [スキップ] {filename} (振り分け元フォルダにファイルが見つかりません。先にファイルをフォルダに入れてください)", False
-
-        dest_dir = self.determine_destination(filename)
-        dest = os.path.join(dest_dir, filename)
-
-        if os.path.exists(dest):
-            return f"  [エラー] {filename} はすでに移動先に存在するためスキップしました", False
-
-        shutil.move(src, dest)
-        self.last_moved_history.append((src, dest))
-        self.write_log(filename, os.path.basename(dest_dir), "成功(選択仕分け)")
-        return f"  [成功] {filename} ➔ {os.path.basename(dest_dir)}", True
+            count += 1
+            
+        return True, f"{count} 件のファイルを自動整理しました！"
 
     def undo(self):
-        if not self.last_moved_history: return "元に戻す直前の移動履歴がありません。", "Undo失敗"
+        if not self.last_moved_history: 
+            return False, "元に戻す履歴がありません。"
+            
         count = 0
         for src, dest in self.last_moved_history:
             if os.path.exists(dest):
@@ -107,63 +79,131 @@ class FileOrganizerLogic:
                 self.write_log(os.path.basename(src), "Undo戻し", "成功")
                 count += 1
         self.last_moved_history = []
-        return f"[Undo成功] {count} 件のファイルを振り分け元に戻しました。", "元に戻しました！"
+        return True, f"{count} 件のファイルを「振り分け元」に戻しました。"
 
-logic = FileOrganizerLogic()
 
-class WebServerHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == '/':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html; charset=utf-8')
-            self.end_headers()
-            with open(os.path.join(BASE_DIR, 'index.html'), 'rb') as f: 
-                self.wfile.write(f.read())
-        elif self.path in ['/preview', '/execute', '/undo']:
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
+class AppUI(tk.Tk):
+    def __init__(self, logic):
+        super().__init__()
+        self.logic = logic
+        self.title("ファイル自動整理アプリ")
+        self.geometry("800x500")
+        
+        # UIのセットアップ
+        self.setup_ui()
+        self.refresh_directories()
+
+    def setup_ui(self):
+        # 上部ツールバー
+        toolbar = tk.Frame(self, bd=1, relief=tk.RAISED, bg="#f0f0f0")
+        toolbar.pack(side=tk.TOP, fill=tk.X)
+
+        tk.Button(toolbar, text="🔄 更新", command=self.refresh_directories).pack(side=tk.LEFT, padx=2, pady=2)
+        tk.Button(toolbar, text="✨ 自動仕分けを実行", bg="#d0e8f1", command=self.execute_sort).pack(side=tk.LEFT, padx=2, pady=2)
+        tk.Button(toolbar, text="↩️ 元に戻す", command=self.execute_undo).pack(side=tk.LEFT, padx=2, pady=2)
+
+        # メインパネル（左右分割）
+        paned_window = tk.PanedWindow(self, orient=tk.HORIZONTAL)
+        paned_window.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # 左側：フォルダツリー
+        left_frame = tk.Frame(paned_window)
+        paned_window.add(left_frame, minsize=200)
+        
+        tk.Label(left_frame, text="📁 フォルダ一覧", anchor="w").pack(fill=tk.X)
+        self.tree_dirs = ttk.Treeview(left_frame, show="tree")
+        self.tree_dirs.pack(fill=tk.BOTH, expand=True)
+        self.tree_dirs.bind("<<TreeviewSelect>>", self.on_dir_select)
+
+        # 右側：ファイル一覧
+        right_frame = tk.Frame(paned_window)
+        paned_window.add(right_frame, minsize=400)
+        
+        self.current_folder_label = tk.Label(right_frame, text="📄 ファイル一覧", anchor="w")
+        self.current_folder_label.pack(fill=tk.X)
+        
+        columns = ("name", "type")
+        self.tree_files = ttk.Treeview(right_frame, columns=columns, show="headings")
+        self.tree_files.heading("name", text="ファイル名")
+        self.tree_files.heading("type", text="種類")
+        self.tree_files.column("name", width=300)
+        self.tree_files.column("type", width=100)
+        self.tree_files.pack(fill=tk.BOTH, expand=True)
+
+        self.current_selected_path = None
+
+    def refresh_directories(self):
+        # 左側のツリーをクリア
+        for item in self.tree_dirs.get_children():
+            self.tree_dirs.delete(item)
             
-            alert_msg = None
-            if self.path == '/preview': res_text = logic.preview()
-            elif self.path == '/execute': res_text, alert_msg = logic.execute()
-            elif self.path == '/undo': res_text, alert_msg = logic.undo()
-            
-            response = {"result": f"--- 実行時刻: {datetime.now().strftime('%H:%M:%S')} ---\n" + res_text}
-            if alert_msg: response["alert"] = alert_msg
-            self.wfile.write(json.dumps(response, ensure_ascii=False).encode('utf-8'))
+        # 対象となるフォルダリスト（ベースディレクトリ内のフォルダ）
+        target_folders = ["振り分け元", "実験", "数学", "英語", "未該当"]
+        
+        root_node = self.tree_dirs.insert("", "end", text="🏠 アプリルート (Base Dir)", open=True)
+        
+        for folder in target_folders:
+            folder_path = os.path.join(BASE_DIR, folder)
+            if os.path.exists(folder_path):
+                # ツリーにアイテムを追加し、パスを記憶させる
+                self.tree_dirs.insert(root_node, "end", text=f"📁 {folder}", values=(folder_path,))
+                
+        self.refresh_files()
+
+    def on_dir_select(self, event):
+        selected = self.tree_dirs.selection()
+        if not selected: return
+        
+        item = self.tree_dirs.item(selected[0])
+        values = item.get("values")
+        if values:
+            self.current_selected_path = values[0]
+            folder_name = os.path.basename(self.current_selected_path)
+            self.current_folder_label.config(text=f"📄 ファイル一覧 - [{folder_name}]")
+            self.refresh_files()
         else:
-            self.send_error(404)
+            self.current_selected_path = None
+            self.current_folder_label.config(text="📄 ファイル一覧")
+            self.refresh_files()
 
-    def do_POST(self):
-        if self.path == '/select-move':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data.decode('utf-8'))
-            filename = data.get('filename', '')
-
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-
-            log_line, success = logic.execute_direct_move(filename)
-            res_text = "【選択仕分け 実行結果】\n" + log_line
-            alert_msg = "仕分けが完了しました！" if success else "エラーが発生しました"
+    def refresh_files(self):
+        # 右側のファイル一覧をクリア
+        for item in self.tree_files.get_children():
+            self.tree_files.delete(item)
             
-            response = {
-                "result": f"--- 実行時刻: {datetime.now().strftime('%H:%M:%S')} ---\n" + res_text,
-                "alert": alert_msg
-            }
-            self.wfile.write(json.dumps(response, ensure_ascii=False).encode('utf-8'))
+        if not self.current_selected_path or not os.path.exists(self.current_selected_path):
+            return
+            
+        try:
+            for item in os.listdir(self.current_selected_path):
+                full_path = os.path.join(self.current_selected_path, item)
+                if os.path.isfile(full_path):
+                    ext = os.path.splitext(item)[1] or "ファイル"
+                    self.tree_files.insert("", "end", values=(item, ext))
+        except Exception as e:
+            print(f"読み込みエラー: {e}")
+
+    def execute_sort(self):
+        success, msg = self.logic.execute()
+        if success:
+            messagebox.showinfo("成功", msg)
+        else:
+            messagebox.showwarning("お知らせ", msg)
+        self.refresh_directories()
+        self.refresh_files()
+
+    def execute_undo(self):
+        success, msg = self.logic.undo()
+        if success:
+            messagebox.showinfo("成功", msg)
+        else:
+            messagebox.showwarning("お知らせ", msg)
+        self.refresh_directories()
+        self.refresh_files()
 
 if __name__ == '__main__':
-    import webbrowser
-    import threading
-
-    def open_browser():
-        webbrowser.open("http://localhost:8080")
-
-    server = HTTPServer(('localhost', 8080), WebServerHandler)
-    threading.Timer(0.5, open_browser).start()
-    print("🚀 アプリ用サーバーが起動しました。")
-    server.serve_forever()
+    # ロジックの初期化
+    logic = FileOrganizerLogic()
+    # アプリの起動
+    app = AppUI(logic)
+    app.mainloop()

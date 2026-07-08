@@ -4,33 +4,194 @@
     <meta charset="UTF-8">
     <title>ファイル自動仕分けアプリ</title>
     <style>
-        body { font-family: sans-serif; margin: 20px; background: #f5f5f5; }
-        .container { max-width: 600px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        button { padding: 10px 15px; margin-right: 10px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #fff; }
-        button.primary { background: #007bff; color: white; border: none; }
-        #result { margin-top: 20px; padding: 15px; background: #333; color: #fff; border-radius: 4px; white-space: pre-wrap; font-family: monospace; min-height: 100px; }
-        .action-zone { margin-top: 20px; border: 2px solid #28a745; padding: 20px; background: #f4fbf6; border-radius: 4px; }
-        input[type="file"] { margin-top: 10px; display: block; }
+        /* モダンなBoxアプリ風のデザイン設定 */
+        :root {
+            --primary-color: #0061D5; 
+            --bg-color: #FFFFFF;
+            --sidebar-bg: #F9FAFB;
+            --border-color: #E5E7EB;
+            --text-main: #1F2937;
+            --text-sub: #6B7280;
+        }
+
+        body { 
+            font-family: 'Segoe UI', Helvetica, Arial, sans-serif; 
+            margin: 0; 
+            display: flex;
+            height: 100vh;
+            background: var(--bg-color);
+            color: var(--text-main);
+        }
+
+        /* 左側：サイドバー（フォルダツリー風） */
+        .sidebar {
+            width: 260px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding-top: 20px;
+        }
+        .sidebar-header {
+            padding: 0 20px 20px;
+            font-weight: bold;
+            font-size: 14px;
+            color: var(--text-sub);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .folder-item {
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            color: var(--text-main);
+            font-size: 15px;
+            border-left: 3px solid transparent;
+        }
+        .folder-item:hover {
+            background: #F3F4F6;
+            cursor: default;
+        }
+        .folder-item.active {
+            background: #EFF6FF;
+            border-left-color: var(--primary-color);
+            color: var(--primary-color);
+            font-weight: bold;
+        }
+        .folder-icon { margin-right: 12px; font-size: 1.2em; }
+
+        /* 右側：メインコンテンツ */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        .header {
+            height: 60px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            padding: 0 30px;
+        }
+        .header h2 { margin: 0; font-size: 1.2em; font-weight: 600; }
+        
+        .content-body { padding: 30px; max-width: 900px; }
+
+        /* ツールバー（ボタン群） */
+        .toolbar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 25px;
+        }
+        button { 
+            padding: 10px 20px; 
+            cursor: pointer; 
+            border-radius: 6px; 
+            border: 1px solid var(--border-color); 
+            background: #fff; 
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        button:hover { background: #F9FAFB; }
+        button.primary { 
+            background: var(--primary-color); 
+            color: white; 
+            border: none; 
+        }
+        button.primary:hover { background: #0050B3; }
+
+        /* 個別ファイルアップロードゾーン */
+        .action-zone { 
+            border: 2px dashed var(--border-color); 
+            padding: 40px 20px; 
+            background: #FAFBFC; 
+            border-radius: 8px; 
+            text-align: center;
+            margin-bottom: 25px;
+            transition: border-color 0.2s;
+        }
+        .action-zone:hover { border-color: var(--primary-color); }
+        .action-zone h3 { margin: 0 0 10px 0; font-size: 1.1em; }
+        .action-zone p { color: var(--text-sub); font-size: 0.9em; margin-bottom: 20px; }
+        
+        /* カスタムファイル選択ボタン */
+        .file-upload-btn {
+            display: inline-block;
+            padding: 10px 24px;
+            background: #fff;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .file-upload-btn:hover { background: #F9FAFB; }
+        input[type="file"] { display: none; }
+
+        /* ログ出力エリア */
+        .log-section h3 { font-size: 1em; color: var(--text-main); margin-bottom: 12px; }
+        #result { 
+            padding: 20px; 
+            background: #1E1E1E; 
+            color: #D4D4D4; 
+            border-radius: 8px; 
+            white-space: pre-wrap; 
+            font-family: 'Consolas', 'Courier New', monospace; 
+            min-height: 150px; 
+            font-size: 13px;
+            line-height: 1.6;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>📁 ファイル自動仕分けシステム</h2>
-    <p>現在の作業フォルダ: <strong>file-app</strong></p>
-    
-    <button onclick="sendRequest('/preview')">振り分け元をプレビュー</button>
-    <button class="primary" onclick="sendRequest('/execute')">一括移動を実行</button>
-    <button onclick="sendRequest('/undo')">元に戻す (Undo)</button>
+<!-- 左側のサイドバー（フォルダツリー風） -->
+<div class="sidebar">
+    <div class="sidebar-header">マイフォルダ</div>
+    <div class="folder-item active"><span class="folder-icon">📂</span> 振り分け元 (作業用)</div>
+    <div class="folder-item"><span class="folder-icon">📁</span> 実験</div>
+    <div class="folder-item"><span class="folder-icon">📁</span> 数学</div>
+    <div class="folder-item"><span class="folder-icon">📁</span> 英語</div>
+    <div class="folder-item"><span class="folder-icon">📁</span> 未該当</div>
+</div>
 
-    <div class="action-zone">
-        <strong>【個別ファイル仕分け】</strong><br>
-        <span style="font-size: 0.9em; color: #555;">※あらかじめ「振り分け元」フォルダに置いてあるファイルを選択してください。</span>
-        <input type="file" id="file-selector" onchange="handleFileSelect(this)">
+<!-- 右側のメイン画面 -->
+<div class="main-content">
+    <div class="header">
+        <h2>📁 ファイル自動仕分けシステム</h2>
     </div>
     
-    <h3>📋 実行結果・診断ログ</h3>
-    <div id="result">ボタンを押すか、ファイルを選択してください。</div>
+    <div class="content-body">
+        <!-- 操作ボタン群 -->
+        <div class="toolbar">
+            <button onclick="sendRequest('/preview')">👀 プレビュー</button>
+            <button class="primary" onclick="sendRequest('/execute')">✨ 一括移動を実行</button>
+            <button onclick="sendRequest('/undo')">↩️ 元に戻す (Undo)</button>
+        </div>
+
+        <!-- 個別仕分けゾーン -->
+        <div class="action-zone">
+            <h3>個別ファイル仕分け</h3>
+            <p>※あらかじめ「振り分け元」フォルダに置いてあるファイルを選択してください。</p>
+            
+            <label class="file-upload-btn">
+                📄 ファイルを選択して仕分け
+                <input type="file" id="file-selector" onchange="handleFileSelect(this)">
+            </label>
+        </div>
+        
+        <!-- ログ表示エリア -->
+        <div class="log-section">
+            <h3>📋 実行結果・診断ログ</h3>
+            <div id="result">ボタンを押すか、ファイルを選択してください。</div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -47,7 +208,6 @@
         }
     }
 
-    // 💡 ファイルが選択されたら、名前だけを安全にJSONで送る
     async function handleFileSelect(input) {
         if (input.files.length === 0) return;
         const filename = input.files[0].name;
