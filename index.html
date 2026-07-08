@@ -430,7 +430,6 @@
 
         files.forEach(filename => {
             const ext = filename.split('.').pop().toUpperCase() + " ファイル";
-            // ファイル名をクリックすると openFile 関数が走るようにリンク化
             const row = `<tr>
                 <td>📄 <span class="file-link" onclick="openFile('${filename}')">${filename}</span></td>
                 <td>${ext}</td>
@@ -455,9 +454,8 @@
 
     // --- 各種アクション ---
 
-    // 1. ファイルを開く機能 (本物/模擬のハイブリッド対応)
+    // 1. ファイルを開く機能 (文字化け対策版)
     function openFile(filename) {
-        // メモリ上に実際のファイルオブジェクトが残っている場合（選択直後など）
         if (liveFileObjects[filename]) {
             const file = liveFileObjects[filename];
             const fileURL = URL.createObjectURL(file);
@@ -466,7 +464,6 @@
             return;
         }
 
-        // 模擬ファイル、またはアプリ再起動後のファイルの場合（デモ用の内容を生成して見せる）
         let dummyContent = `【ファイル整頓アプリ - デモ用プレビュービューア】\n\n`;
         dummyContent += `ファイル名: ${filename}\n`;
         dummyContent += `ステータス: 現在 [${currentFolder}] フォルダ内に安全に保管されています。\n`;
@@ -475,7 +472,7 @@
         dummyContent += `実際のアプリでは、PC内のローカルファイルを直接起動、または対応するアプリケーション（Word、Excel等）に受け渡して展開します。\n`;
         dummyContent += `第三者が評価・確認を行う際、PC側に本物のファイルを準備する手間を省くための親切設計シミュレーション機能です。`;
 
-        // テキストファイルとしてブラウザの別タブで綺麗に展開する
+        // ★ 文字化け防止対策: typeに「charset=utf-8」を明示してBlobを生成
         const blob = new Blob([dummyContent], { type: 'text/plain;charset=utf-8' });
         const dummyURL = URL.createObjectURL(blob);
         window.open(dummyURL, '_blank');
@@ -485,25 +482,22 @@
 
     // 2. 模擬（サンプル）ファイル生成
     function generateSampleFiles() {
-        // 各フォルダに直接ファイルを配分する仕様に変更
         storage["実験"] = ["第1回_物理実験データ.xlsx", "化学実験レポート_最終版.txt"];
         storage["数学"] = ["数学基礎_課題回答.docx", "微分積分_演習問題.pdf"];
         storage["英語"] = ["英語リスニング演習.mp3"];
         storage["未該当"] = ["提出スケジュール一覧.txt", "アイデアメモ.png"];
         
-        // 新しく生成されたため本物のファイルオブジェクトは空にする
         liveFileObjects = {};
         lastMovedHistory = [];
         
-        // 保存
         saveState();
         
-        switchFolder(currentFolder); // 現在の表示を更新
+        switchFolder(currentFolder);
         printLog("他者評価・デモ用に、各フォルダに合計7つの模擬ファイルを自動生成・配分しました。\nファイル名をクリックすると、中身の確認（デモ閲覧）が可能です！", "サンプル自動生成");
         alert("デモ用ファイルを各フォルダに自動配置しました！ファイル名をクリックして中身を確認してみてください。");
     }
 
-    // 3. 元に戻す (Undo) - 直前に追加したファイルを削除する
+    // 3. 元に戻す (Undo)
     function triggerUndo() {
         if (lastMovedHistory.length === 0) {
             printLog("元に戻す直前の移動履歴がありません。", "Undo失敗");
@@ -516,48 +510,37 @@
             const idx = storage[history.to].indexOf(history.file);
             if (idx > -1) {
                 storage[history.to].splice(idx, 1);
-                // 振り分け元がないため、Undo時はアプリ上からデータを取り除く（またはliveFileObjectsから削除）
                 if (liveFileObjects[history.file]) delete liveFileObjects[history.file];
                 count++;
             }
         });
 
         lastMovedHistory = [];
-        
-        // 保存
         saveState();
-        
         updateView();
         printLog(`[Undo成功] 直前に追加した ${count} 件のファイルの仕分けを取り消し、削除しました。`, "元に戻しました");
         alert("直前の追加を取り消しました。");
     }
 
-    // 4. ファイルを選択して直接仕分け（振り分け元を経由しない）
+    // 4. ファイルを選択して直接仕分け
     function handleFileSelect(input) {
         if (input.files.length === 0) return;
         const file = input.files[0];
         const filename = file.name;
 
-        // 本物のファイルオブジェクトをメモリに保持（「開く」ボタン用）
         liveFileObjects[filename] = file;
 
-        // 直接格納先を決定
         const dest = determineDestination(filename);
         storage[dest].push(filename);
         
-        // Undo用に履歴を残す
         lastMovedHistory = [{ file: filename, to: dest }];
-        
-        // 保存
         saveState();
-        
-        // 自動で仕分け先のフォルダに切り替えてユーザーに見せる
         switchFolder(dest);
         
         printLog(`【自動整頓 実行結果】\n  [成功] ${filename} ➔ [${dest}] フォルダへ直接格納しました。`, "自動仕分け完了");
         alert(`「${filename}」は、名前のキーワード判定により自動的に【${dest}】フォルダへ整理されました！`);
         
-        input.value = ''; // リセット
+        input.value = '';
     }
 </script>
 
