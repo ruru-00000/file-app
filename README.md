@@ -12,5 +12,8 @@ https://ruru-00000.github.io/file-app/
 #　テスト結果サマリー
 テストは全24種類実施し、その結果はtest-report.mdに載せた。
 
-#　フローチャートやクラス図などの作成した図
-test-report.pdf
+
+![ユースケース図風フローチャート](./file-app/s1.png)
+![クラス図](./file-app/s2.png)
+![シーケンス図](./file-app/s3.png)
+![状態遷移図](./file-app/s4.png)
