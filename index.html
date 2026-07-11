@@ -311,7 +311,7 @@
             <!-- テストファイル生成ゾーン -->
             <div class="action-zone zone-sub" style="border-style: solid; background: #f0f7ff;">
                 <h3>2. デモ用サンプル自動生成</h3>
-                <p>PCにファイルを準備しなくても、評価用の模擬ファイルを各フォルダへ瞬時に自動配分します。</p>
+                <p>PCにファイルを準備しなくても、模擬ファイルを各フォルダへ瞬時に自動配分します。</p>
                 <button onclick="generateSampleFiles()" style="margin: 0 auto; background: #e1effe; color: #1e429f; border-color: #a4cafe;">📄 模擬ファイルを一括生成</button>
             </div>
         </div>
@@ -352,6 +352,9 @@
 
     // 現在右クリック操作を行っている対象のファイル名を保持
     let selectedFilenameContext = null;
+
+    // デモファイル生成用の識別カウンター
+    let demoCountSeed = 1;
 
     // --- 状態の初期化（ローカルストレージのチェック） ---
     let storage, customFolders, ruleMap, currentFolder;
@@ -580,7 +583,7 @@
 
         let dummyContent = `【ファイル整頓アプリ - デモ用プレビュービューア】\n\n`;
         dummyContent += `ファイル名: ${filename}\n`;
-        dummyContent += `ステータス: 現在 [${currentFolder}] フォルダ内に安全に保管されています。\n`;
+        dummyContent += `ステータス: 現在 [${determineDestination(filename)}] フォルダ内に安全に保管されています。\n`;
         dummyContent += `--------------------------------------------------\n`;
         dummyContent += `これはシミュレーターが自動生成した、ファイルの中身のデモ表示です。\n`;
         dummyContent += `実際のアプリでは、PC内のローカルファイルを直接起動、または対応するアプリケーション（Word、Excel等）に受け渡して展開します。\n`;
@@ -593,21 +596,38 @@
         printLog(`デモ用ファイル「${filename}」のシミュレーション内容を新しいタブで表示しました。`, "ファイルオープン(デモ)");
     }
 
-    // 2. 模擬（サンプル）ファイル生成
+    // 2. 模擬（サンプル）ファイル生成（★ボタンを押すたびに3つ追加されるよう修正）
     function generateSampleFiles() {
-        storage["実験"] = ["第1回_物理実験データ.xlsx", "化学実験レポート_最終版.txt"];
-        storage["数学"] = ["数学基礎_課題回答.docx", "微分積分_演習問題.pdf"];
-        storage["英語"] = ["英語リスニング演習.mp3"];
-        storage["未該当"] = ["提出スケジュール一覧.txt", "アイデアメモ.png"];
+        // 重複しないユニークな名前を作るため、現在のタイムスタンプとカウンターを組み合わせる
+        const suffix = `${new Date().getSeconds()}_${demoCountSeed}`;
         
-        liveFileObjects = {};
-        lastMovedHistory = [];
+        const newDummies = [
+            `第${demoCountSeed}回_物理実験データ_${suffix}.xlsx`,
+            `数学基礎_演習問題_追加分${demoCountSeed}.docx`,
+            `英語リスニング追加レッスン_${suffix}.mp3`
+        ];
+
+        // 各ファイルをキーワード判定にかけて適切なフォルダに配分
+        let logDetails = [];
+        lastMovedHistory = []; // 直前のUndo用に今回の履歴を初期化
+
+        newDummies.forEach(filename => {
+            const dest = determineDestination(filename);
+            storage[dest].push(filename);
+            
+            // Undo履歴に記録
+            lastMovedHistory.push({ file: filename, to: dest });
+            logDetails.push(`  ➔ [${dest}] フォルダ: ${filename}`);
+        });
+
+        // 次回のためにシードをインクリメント
+        demoCountSeed++;
         
         saveState();
+        switchFolder(currentFolder); // 画面を更新
         
-        switchFolder(currentFolder);
-        printLog("他者評価・デモ用に、各フォルダに合計7つの模擬ファイルを自動生成・配分しました。\nファイル名（または右クリックメニュー）から、様々なアクションをテスト可能です！", "サンプル自動生成");
-        alert("デモ用ファイルを各フォルダに自動配置しました！ファイル名をクリックして中身を確認してみてください。");
+        printLog(`【デモサンプル生成】新しく3つの模擬ファイルを自動配分しました。\n${logDetails.join('\n')}\n\n※「直前の仕分けを元に戻す(Undo)」を押すと、今追加した3ファイルを一括で取り消せます。`, "サンプル自動生成");
+        alert("新しいデモ用模擬ファイルを3つ生成し、自動配置しました！");
     }
 
     // 3. 元に戻す (Undo)
